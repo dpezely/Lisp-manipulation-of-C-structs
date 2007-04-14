@@ -1,0 +1,26 @@
+<html>
+<head><title>Bit twiddling in ANSI Common Lisp</title></head>
+<body>
+<p><b>Bit twiddling in ANSI Common Lisp</b></p>
+  
+<p>Compare Lisp versus C manipulating 5 bits from a sequence with 7 or more bytes:</p>
+
+<table border="1" title="Compare Lisp versus C manipulating 5 bits from a 7 byte binary sequence">
+<tr><td></td><th>Lisp</th><th>C</th></tr>
+<tr>
+  <th>Extract</th>
+  <td><code><span style="color:grey">(setf bits</span><br/>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<a href="http://www.lispworks.com/documentation/HyperSpec/Body/f_ldb.htm">ldb</a> (<a href="http://www.lispworks.com/documentation/HyperSpec/Body/f_by_by.htm#byte">byte</a> 5 7) value)<span style="color:grey">)</span></code></td>
+  <td><code><span style="color:grey">bits =</span><br/>
+      &nbsp;&nbsp;(word &gt;&gt; 7) &amp; 0x1F<span style="color:grey">;</span></code></td>
+</tr>
+<tr>
+  <th>Modify</th>
+  <td><code><span style="color:grey">(setf new-value</span><br/>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<a href="http://www.lispworks.com/documentation/HyperSpec/Body/f_dpb.htm">dpb</a> bits (<a href="http://www.lispworks.com/documentation/HyperSpec/Body/f_byte.htm">byte</a> 5 7) value)<span style="color:grey">)</span></code></td>
+  <td><code><span style="color:grey">new_value =</span><br/>
+      &nbsp;&nbsp;(value &amp; (~(0x1F &lt;&lt; 7)))|((bits &amp; 0x1F) &lt;&lt; 7)<span style="color:grey">;</span></code></td>
+</tr>
+</table>
+
+</body></html>

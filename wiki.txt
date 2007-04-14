@@ -1,0 +1,139 @@
+= Lisp manipulation of C structures =
+
+== Overview ==
+
+Some conversion is necessary when using [[Programming:Common_Lisp/Strings|strings or characters]] in Lisp.
+
+The preferred approach here is to use <code>'(unsigned-byte 8)</code>.
+
+While character arrays may be cheap in other languages like C or permit exploiting the ''de facto'' nature of the ASCII character set, that's the wrong approach for ANSI Common Lisp.
+
+Similarly to what's advised for [[Programming:Common_Lisp/Files_and_Directories|Files and Directories]], simply read or write a vector of ''unsigned bytes''.
+
+Anything in the rest of your Lisp program that needs to work with actual strings or characters should convert only as needed after reading.
+
+<pre>
+(defun read-c-file (&optional (file-path "data.struct") (max-length 48))
+  (with-open-file (stream (merge-pathnames file-path)
+			  :element-type '(unsigned-byte 8)
+			  :direction :input)
+    (let ((buffer (make-array max-length
+			      :element-type '(unsigned-byte 8)
+			      :fill-pointer t)))
+      (let ((actual-length (read-sequence buffer stream
+					  :end max-length)))
+	(setf (fill-pointer buffer) actual-length)
+	(format t "received=~a max=~a buffer=~s~%" actual-length max-length buffer)
+	(DO-SOMETHING-WITH-BUFFER buffer))
+      buffer)))
+</pre>
+
+Use of <code>fill-pointer</code> for the array is optional but recommended to help track the actual length received, which may differ from what was attempted to be read.
+
+An example of ''[[#processing|DO-SOMETHING-WITH-BUFFER]]'' is below.
+
+<pre>
+(defun write-C-file (buffer &optional length (file-path "data.struct"))
+  (unless length
+    (setf length (length buffer)))
+  (with-open-file (stream (merge-pathnames file-path)
+			  :element-type '(unsigned-byte 8)
+			  :direction :output
+			  :if-exists :rename)
+    (let ((written (length (write-sequence buffer stream))))
+      (format t "wrote=~a bytes buffer=~s~%" written buffer)))
+  buffer)
+</pre>
+
+=== Processing ===
+
+When processing the vector of <code>'(unsigned-byte 8)</code> elements, convert each field of the corresponding C structure as needed based upon byte offsets.  (Note that it's actually a ''[[Programming:Common_Lisp/Sequences|vector]]'' despite being created with <code>make-array</code>.  The distinction is that this has only a single dimension.)
+
+Extracting a ''string'' from the raw bytes:
+<pre>
+(map 'string #'code-char
+     (subseq buffer *start-index* *end-index*))
+</pre>
+
+Extracting just one byte:
+<pre>
+(subseq buffer *state-index* (1+ *state-index*))
+</pre>
+
+Of course, you'll need to assign the resulting value from each of those prior two examples.
+
+Meanwhile, assigning into the buffer of raw bytes:
+
+<pre>
+(setf (elt buffer *magic-number-index*) (logand #xFF *preamble-value*)
+</pre>
+
+It's important to protect what you're assigning into; use of bitmasks like <code>logand</code> work well for this.
+
+For more than just one byte, such as inserting ''sequence2'' to become a subset within ''sequence1'', you could use:
+
+<pre>
+(replace sequence1 (map 'vector #'char-code sequence2)
+	 :start1 a :end1 b)
+</pre>
+
+A [[#Helper Functions|helper function]] is provided below that avoids an intermediate <code>vector</code> from getting created.
+
+== Helper Functions ==
+
+<pre>
+(defun map-replace (fn sequence1 sequence2 &key (start1 0) end1 (start2 0) end2)
+  "Alter elements of first sequence with those from second but after applying function
+to that element first, performing each element in order.
+
+Results will be identical to the following but without creating
+intermediate vector:
+  (replace sequence1 (map 'vector #'char-code sequence2) :start1 start1 :end1 end1)
+
+See also: http://common-lisp.net/project/trivial-utf-8
+
+Side-effects: sequence1 gets modified unless sequence2 is effectively nil.
+Returns sequence1 after all modifications.
+"
+  (loop
+     for i upfrom start1 below (or end1 (length sequence1))
+     and j upfrom start2 below (or end2 (length sequence2))
+     do (setf (elt sequence1 i) (funcall fn (elt sequence2 j))))
+  sequence1)
+
+
+(defun network-bytes-to-number (buffer start-index total-bits)
+  "Convert network byte ordered sequence of unsigned bytes to a number."
+  (unless (= (mod total-bits 8) 0)
+    (error "Please specify total-bits as total for multiples of eight bit bytes"))
+  (let ((value 0))
+    (loop for i downfrom (- total-bits 8) downto 0 by 8
+       for cursor upfrom start-index
+       do (setf value (dpb (elt buffer cursor)
+			   (byte 8 i) value))
+
+	 (format t "buffer[~d]==#x~2X; shift<< ~d bits; value=~d~%"
+		 cursor (elt buffer cursor) i value))
+    value))
+
+(defun number-to-network-bytes (number total-bits &optional buffer (start-index 0))
+  "Convert number to network byte ordered sequence of unsigned bytes characters."
+  (unless (= (mod total-bits 8) 0)
+    (error "Please specify total-bits as total for multiples of eight bit bytes"))
+  (unless buffer
+    (setf buffer (make-array (/ total-bits 8) :element-type 'character)))
+  (loop for i downfrom (- total-bits 8) downto 0 by 8
+     for cursor upfrom start-index
+     do (setf (elt buffer cursor) (ldb (byte 8 i) number))
+
+       (let ((value (ldb (byte 8 i) number)))
+	 (format t "number=~d: shift>> ~d bits; value=~d #x~2X; buffer[~d]==#x~2X~%"
+		 number i value value cursor (elt buffer cursor))))
+  buffer)
+</pre>
+
+== Time &amp; Epochs ==
+
+If converting time values from another language, let alone operating system, be aware that the epoch (semantics for value <code>0</code>) may be different.
+
+ANSI Common Lisp has midnight 1 January 1900 UTC as the value 0 while Unix and many C libraries use 1 January 1970.  Simple arithmetic converts between the two.

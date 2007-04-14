@@ -1,0 +1,27 @@
+<html>
+<head><title>Lisp manipulation of C structures</title></head>
+<body>
+<p>Source code from the April 2007 meeting of <a href="http://wiki.alu.org/lispsea">LispSea</a>:
+  <b>Lisp manipulation of C structures</b></p>
+
+<p>This includes full source code beyond what has been
+<a href="http://en.wikibooks.org/wiki/Programming:Common_Lisp/Files_and_Directories/C_struct">contributed</a>
+to <a href="http://en.wikibooks.org/wiki/Programming:Common_Lisp">WikiBooks</a>.</p>
+
+<p>Much thanks to the person with deep knowledge of SBCL internals who
+elaborated on the point that characters are <em>not cheap</em> in ANSI CL as
+someone with a C/C++ or Perl/Python/Ruby background might assume.  There are
+font and other metadata associated with them.  Also, your Lisp system of
+choice may not necessarily use Unicode, iso-8859-1 or even ASCII encoding.
+Additionally, some Lisp systems may choke on non-ASCII values, specifically
+anything above 127.</p>
+
+<p>See also: <a href="http://common-lisp.net/project/trivial-utf-8">Trivial UTF-8</a>.</p>
+
+<div>
+<script>reddit_url='http://play.org/lispsea/c-struct/'</script>
+<script language="javascript" src="http://reddit.com/button.js?t=3"></script>
+</div>
+
+</body>
+</html>

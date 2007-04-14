@@ -1,0 +1,20 @@
+								-*- outline -*-
+* Lisp manipulation of C structures
+~/play.org/lispsea/struct/
+** intro
+ - This is ANSI CL for Sys Prog
+ - What is Sys Prog?
+ - What it's not: no GUI, maybe HTML
+** example
+ - C app sends to Lisp app
+ - finished C code
+ - finished Lisp code
+** walk-through
+ - key features from C code
+ - key features from Lisp code
+** Examples 
+ - LDB, DPB and BYTE
+ - compare to C bit shifting
+** Time
+ - different epochs
+ - gettimeofday() includes nanoseconds
