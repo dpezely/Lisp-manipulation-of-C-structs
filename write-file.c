@@ -165,7 +165,7 @@ int main(int argc, char *argv[]) {
     ssize_t written = write(out, (const void*)&message, message_size);
     close(out);
     if (written > -1) 
-      printf("wrote %ld bytes\n", written);
+      printf("wrote %ld bytes\n", (long)written);
     else
       perror("unable to write");
   }

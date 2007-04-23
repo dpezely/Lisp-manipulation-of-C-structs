@@ -3,48 +3,37 @@
 (in-package #:c-struct)
 
 (defun demo-write (buffer &optional length (file-path "data.struct"))
-  "Fast because it may use OS's native write() but requires
-byte-by-byte translation from 'character to 'unsigned-byte when
-assembling the buffer as strings"
   (unless length
     (setf length (length buffer)))
   (with-open-file (stream (merge-pathnames file-path)
 			  :element-type '(unsigned-byte 8)
 			  :direction :output
 			  :if-exists :rename)
-    (let ((buffer (write-sequence
-		   ;;byte-by-byte translation:
-		   (map 'vector #'char-code buffer)
-		   stream)))
-      (format t "wrote=~a bytes buffer=~s~%" (length buffer) buffer)
-      buffer)))
+    (let ((written (length (write-sequence buffer stream))))
+      (format t "wrote=~a bytes buffer=~s~%" written buffer)))
+  buffer)
 
 ;;(demo-write (assemble-message))
+
 #+(or)
 (demo-write
- (assemble-message :app-name "OTHER APP" :agent-id 41
+ (assemble-message :app-name "OTHER APP" :agent-id 241
 		   :state (char-code #\s) :flags (char-code #\f)
-		   :app-time 2208988800
+		   :app-time (unix-to-lisp-time 0)
+		   :node-time (unix-to-lisp-time 1176702348)
 		   :status-text "This is a test.
 This is a test for Lisp manipulation of C structures.
 Had this been a real application, there might be something actually useful here.
 This is only a test.
 "))
 
-#+DOES-NOT-WORK
-(defun demo-write (buffer &optional length (file-path "data.struct"))
-  ;; Simply reversing our #'demo-read function doesn't work!
-  (unless length
-    (setf length (length buffer)))
+
+(defun demo-write-chars (buffer &optional length (file-path "data.struct"))
+  "Less than optimal, but sometimes you really want character-by-character"
   (with-open-file (stream (merge-pathnames file-path)
 			  :element-type '(unsigned-byte 8)
 			  :direction :output
 			  :if-exists :rename)
-    (let ((buffer (write-sequence
-		   ;;byte-by-byte translation
-		   ;;fails at run-time due to MAP not being able to use
-		   ;;UNSIGNED-BYTE as the target type:
-		   (map '(unsigned-byte 8) #'char-code buffer) 
-		   stream)))
-      (format t "wrote=~a bytes buffer=~s~%" (length buffer) buffer)
-      buffer)))
+    (loop for i upto (or length (length buffer)) and byte = (elt buffer i)
+       do (write-byte byte stream)
+       finally (return-from demo-write-chars i))))

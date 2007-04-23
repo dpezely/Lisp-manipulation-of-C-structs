@@ -2,7 +2,7 @@
 
 (in-package #:c-struct)
 
-(defparameter *preamble* #\C)
+(defparameter *preamble* (char-code #\C))
 (defparameter *revision* 241)
 
 (defvar *app-name-length* 16
@@ -19,6 +19,9 @@
 (defparameter *status-length* 400
   "Value must match the message.c version.
 This is a MAXIMUM and not guarenteed to be actual length.")
+
+(defun make-datagram-buffer ()
+  (make-array *max-datagram-length* :element-type '(unsigned-byte 8) :fill-pointer t))
 
 
 ;; From the C code:
@@ -55,9 +58,6 @@ This is a MAXIMUM and not guarenteed to be actual length.")
 Smaller is better, despite contemporary limits of UDP packets being 64k.")
 
 
-(defun make-datagram-buffer ()
-  ;; use 'character rather than '(unsigned-byte 8) to aid debugging
-  (make-array (+ *max-datagram-length* 24) :element-type 'character :fill-pointer t))
 
 (defun unpack-message (buffer &optional actual-length)
   (if (valid-message? buffer)
@@ -67,40 +67,36 @@ Smaller is better, despite contemporary limits of UDP packets being 64k.")
 	(format t "Preamble and revision matched!~@
 		   app name=~s~@
 		   agent-id=~s~@
-		   App start time: ~a==#x~8X~@
-		   Node state=~s; flags=~s; time: ~a==#x~8X~@
+		   App start time: ~a==#x~8X ~a~@
+		   Node state=~s; flags=~s; time: ~a==#x~8X ~a~@
 		   status: ~a...~%"
 		app-name
 		agent-id
-		app-start-time app-start-time
-		state flags node-time node-time
+		app-start-time app-start-time (print-date-and-time app-start-time)
+		state flags node-time node-time (print-date-and-time node-time)
 		(subseq status-text 0 23)))
       (format t "INVALID message; ~a bytes:~a~%" actual-length
 	      (dump-raw-message-fields buffer))))
 
 (defun valid-message? (buffer)
   "Verify that the message is well formed."
-  (let ((preamble-expected #\C)
-	(preamble-received (elt buffer *magic-number-index*)))
-    (unless (char= preamble-expected preamble-received)
-      (format t "WARNING: preamble expected ~s but received ~s~%"
-	      preamble-expected preamble-received)
+  (let ((preamble (elt buffer *magic-number-index*)))
+    (unless (= *preamble* preamble)
+      (format t "WARNING: preamble expected ~s but received ~s~%" *preamble* preamble)
       (return-from valid-message?)))
-  (let ((revision-expected 241)
-	(revision-received (char-code (elt buffer *revision-index*))))
-    (unless (= revision-expected revision-received)
-      (format t "WARNING: revision expected ~s but received ~s~%"
-	      revision-expected revision-received)
+  (let ((revision (elt buffer *revision-index*)))
+    (unless (= *revision* revision)
+      (format t "WARNING: revision expected ~s but received ~s~%" *revision* revision)
       (return-from valid-message?)))
   t)
 
 (defun dump-raw-message-fields (buffer &optional stream)
   "Useful while writing/debugging reader or writer code"
   (format stream "
-		 magic-number=~s
-		 revision=~s ~d
-		 flags=~s
-		 state=~s
+		 magic-number=~d #x~X
+		 revision=~d #x~X
+		 flags=~d #x~X
+		 state=~d #x~X
 
 		 app-name=~s
 		 agent-id=~s
@@ -108,12 +104,11 @@ Smaller is better, despite contemporary limits of UDP packets being 64k.")
 
 		 node-time=~s
 		 app-time=~s
-		 status=~s[...]~%"
-	  (subseq buffer *magic-number-index* *revision-index*)
-	  (subseq buffer *revision-index* *flags-index*)
-	  (char-code (elt buffer *revision-index*))
-	  (subseq buffer *flags-index* *node-state-index*)
-	  (subseq buffer *node-state-index* *app-name-start-index*)
+		 status=~s...~%"
+	  (elt buffer *magic-number-index*) (elt buffer *magic-number-index*)
+	  (elt buffer *revision-index*)     (elt buffer *revision-index*)
+	  (elt buffer *flags-index*)        (elt buffer *flags-index*)
+	  (elt buffer *node-state-index*)   (elt buffer *node-state-index*)
 	      
 	  (subseq buffer *app-name-start-index* *app-name-limit-index*)
 	  (subseq buffer *agent-id-index* *other-index*)
@@ -121,15 +116,8 @@ Smaller is better, despite contemporary limits of UDP packets being 64k.")
 
 	  (subseq buffer *node-time-index* *app-start-time-index*)
 	  (subseq buffer *app-start-time-index* *status-start-index*)
-	  (subseq buffer *status-start-index* (+ *status-start-index* 28))))
-
-(defun extract-app-name (buffer)
-  "get C string (null terminated and padded) from sequence"
-  (subseq buffer *app-name-start-index*
-	  (position-if #'(lambda (x)
-			   (= (char-code x) 0))
-		       buffer
-		       :start *app-name-start-index*)))
+	  (subseq buffer *status-start-index* (min (length buffer)
+						   (+ *status-start-index* 28)))))
 
 (defun extract-message-fields (buffer end)
    "Return values suitable for populating a Lisp structure
@@ -143,8 +131,16 @@ We use INTERN so that Generic Methods may specialize on this value via EQ."
 	    (network-bytes-to-number buffer *node-time-index* *ctime-bit-size*))
 	   (unix-to-lisp-time
 	    (network-bytes-to-number buffer *app-start-time-index* *ctime-bit-size*))
-	   (subseq buffer *status-start-index* (min *status-limit-index*
-						    end))))
+	   (map 'string #'code-char (subseq buffer
+					    *status-start-index*
+					    (min *status-limit-index* end)))))
+
+(defun extract-app-name (buffer)
+  "Get string from sequence (C string, null padded to max length)"
+  (map 'string #'code-char (subseq buffer *app-name-start-index*
+				   (or (position-if #'zerop buffer
+						    :start *app-name-start-index*)
+				       *app-name-limit-index*))))
 
 (defun dump-message (buffer &optional stream)
   "Render pretty-printed text version of buffer containing message via FORMAT."
@@ -154,38 +150,40 @@ We use INTERN so that Generic Methods may specialize on this value via EQ."
 					    *ctime-bit-size*)))
     (format stream "app name=~s ~@
 		    App start time: ~a==#x~8X~@
-		    Node state=~s; flags=~s; time: ~a==#x~8X~@
+		    Node time: ~a==#x~8X~@
+		    Node state=~d #x~X; flags=~d #x~X
 		    status: ~a...~%"
 	    (extract-app-name buffer)
-	    app-time app-time
-	    (char-code (elt buffer *node-state-index*))
-	    (char-code (elt buffer *flags-index*)) node-time node-time
-	    (subseq buffer *status-start-index* (min (+ *status-start-index* 20)
-						     (length buffer))))))
+	    (print-date-and-time app-time) app-time app-time
+	    (print-date-and-time node-time) node-time node-time
+	    (elt buffer *node-state-index*) (elt buffer *node-state-index*)
+	    (elt buffer *flags-index*) (elt buffer *flags-index*)
+	    (map 'string #'code-char (subseq buffer
+					     *status-start-index*
+					     (min (+ *status-start-index* 20)
+						  (length buffer)))))))
 
-(defun assemble-message (&key buffer app-name (agent-id 0)
+(defun assemble-message (&key buffer app-name agent-id
 			 (flags 0) (state 0)
 			 node-time app-time
 			 (status-text "Your ad here!"))
   (if buffer
-      (fill buffer #\null)
+      (fill buffer 0)
       (setf buffer (make-datagram-buffer)))
-
-  (setf (elt buffer *magic-number-index*) *preamble*
-	(elt buffer *revision-index*) (code-char *revision*)
-	(elt buffer *flags-index*) (code-char flags)
-	(elt buffer *node-state-index*) (code-char state)
-	(fill-pointer buffer) (min *max-datagram-length*
-				   (+ *status-start-index* (length status-text))))
-
-  (replace buffer app-name :start1 *app-name-start-index* :end1 *app-name-limit-index*)
+  (setf (elt buffer *magic-number-index*) (logand #xFF *preamble*)
+	(elt buffer *revision-index*) (logand #xFF *revision*)
+	(elt buffer *flags-index*) (logand #xFF flags)
+	(elt buffer *node-state-index*) (logand #xFF state)
+	(fill-pointer buffer) (+ *status-start-index* (min (length status-text)
+							   *status-length*)))
+  (map-replace #'char-code buffer app-name
+	       :start1 *app-name-start-index* :end1 *app-name-limit-index*)
   (number-to-network-bytes agent-id *agent-bit-size* buffer *agent-id-index*)
-
   (number-to-network-bytes (lisp-to-unix-time (or node-time
 						  (get-universal-time)))
 			   *ctime-bit-size* buffer *node-time-index*)
   (when app-time
     (number-to-network-bytes (lisp-to-unix-time app-time)
 			     *ctime-bit-size* buffer *app-start-time-index*))
+  (map-replace #'char-code buffer status-text :start1 *status-start-index*))
 
-  (replace buffer status-text :start1 *status-start-index*))

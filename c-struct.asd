@@ -11,9 +11,8 @@
   :components
   ((:file "package")
    (:file "trivial-sockets" :depends-on ("package"))
-   (:file "variables" :depends-on ("package"))
-   (:file "utilities" :depends-on ("variables"))
-   (:file "message" :depends-on ("variables" "utilities"))
+   (:file "utilities" :depends-on ("package"))
+   (:file "message" :depends-on ("utilities"))
    (:file "read" :depends-on ("message"))
    (:file "write" :depends-on ("message"))
    (:file "listen" :depends-on ("trivial-sockets" "message"))))

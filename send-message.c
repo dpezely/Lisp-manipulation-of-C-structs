@@ -156,16 +156,16 @@ int main(int argc, char *argv[]) {
   printf("app time: %ld==0x%X (net:%x) %s\n",
 	 app_time, app_time, message.app_time, ctime(&app_time));
 		
+  size_t message_size = MAX_MESSAGE_SIZE;
   extern char *APP_STATS_FILENAME;
   int fd = open(APP_STATS_FILENAME, O_RDONLY);
   if (fd < 0) {
     perror("unable to read App's stats file");
   } else {
-    int i = read(fd, message.status, STATUS_LENGTH);
+    int length = read(fd, message.status, STATUS_LENGTH);
     close(fd);
-    if (i > -1)
-      for ( ; i != STATUS_LENGTH; ++i)
-	message.status[i] = (char)NULL;
+    if (length < STATUS_LENGTH)
+      message_size = MAX_MESSAGE_SIZE - STATUS_LENGTH + length;
   }
 
   // Prepare to send UDP datagram:
@@ -185,6 +185,6 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
-  ssize_t sent = send(sock, &message, MAX_MESSAGE_SIZE, 0);
+  ssize_t sent = send(sock, &message, message_size, 0);
   printf("sent %ld bytes\n", (long)sent);
 }
